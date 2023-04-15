@@ -167,7 +167,9 @@ def test_loop(dataloader, model, mode='Test'):
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
-            (loss, logits) = model(input_ids=X['input_ids'], attention_mask=X['attention_mask'], labels=y)
+            out_ = model(input_ids=X['input_ids'], attention_mask=X['attention_mask'], labels=y)
+            loss = out_['loss']
+            logits = out_['logits']
             # Accumulate the validation loss.
             total_eval_loss += loss.item()
 
