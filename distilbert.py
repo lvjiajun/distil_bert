@@ -125,7 +125,7 @@ valid_dataloader = DataLoader(valid_data, batch_size=batch_size, shuffle=False, 
 #         progress_bar.set_description(f'loss: {total_loss / (finish_step_num + step):>7f}')
 #         progress_bar.update(1)
 #     return total_loss
-def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total_loss):
+def train_loop(dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
     progress_bar.set_description(f'loss: {0:>7f}')
     finish_step_num = (epoch - 1) * len(dataloader)
@@ -147,29 +147,50 @@ def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total
     return total_loss
 
 
+def flat_accuracy(preds, labels):
+    pred_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    return np.sum(pred_flat == labels_flat) / len(labels_flat)
+
+
 def test_loop(dataloader, model, mode='Test'):
     assert mode in ['Valid', 'Test']
     size = len(dataloader.dataset)
     correct = 0
-    valloss = 0
+
+    total_eval_accuracy = 0
+    total_eval_loss = 0
+    nb_eval_steps = 0
 
     model.eval()
+    eval_loss, eval_accuracy, nb_eval_steps = 0, 0, 0
     with torch.no_grad():
         for X, y in dataloader:
-            X['labels'] = y
-            X = X.to(device)
-            pred, loss = model(X['input_ids'], X['attention_mask'], X['labels'])
-            valloss += loss_fn(pred, y)
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            X, y = X.to(device), y.to(device)
+            (loss, logits) = model(input_ids=X['input_ids'], attention_mask=X['attention_mask'], labels=y)
+            # Accumulate the validation loss.
+            total_eval_loss += loss.item()
 
-    correct /= size
-    valloss /= size
-    print(f"{mode} Accuracy: {(100 * correct):>0.1f}%\n")
-    print(f"{mode} Valloss: {(100 * valloss):>0.1f}%\n")
+            # Move logits and labels to CPU
+            logits = logits.detach().cpu().numpy()
+            label_ids = y.to('cpu').numpy()
+
+            # Calculate the accuracy for this batch of test sentences, and
+            # accumulate it over all batches.
+            total_eval_accuracy += flat_accuracy(logits, label_ids)
+    # Report the final accuracy for this validation run.
+
+    avg_val_accuracy = total_eval_accuracy / size
+    print("  Accuracy: {0:.2f}".format(avg_val_accuracy))
+
+    # Calculate the average loss over all of the batches.
+    avg_val_loss = total_eval_loss / size
+
+    print("  Validation Loss: {0:.2f}".format(avg_val_loss))
+
     return correct
 
 
-loss_fn = nn.CrossEntropyLoss()
 optimizer = AdamW(model.parameters(), lr=learning_rate)
 lr_scheduler = get_scheduler(
     "linear",
@@ -182,7 +203,7 @@ total_loss = 0.
 best_acc = 0.
 for t in range(epoch_num):
     print(f"Epoch {t + 1}/{epoch_num}\n-------------------------------")
-    total_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t + 1, total_loss)
+    # total_loss = train_loop(train_dataloader, model, optimizer, lr_scheduler, t + 1, total_loss)
     valid_acc = test_loop(valid_dataloader, model, mode='Valid')
     if valid_acc > best_acc:
         best_acc = valid_acc
