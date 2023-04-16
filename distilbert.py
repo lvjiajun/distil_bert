@@ -48,8 +48,8 @@ print(f'Using {device} device')
 seed_everything(42)
 
 learning_rate = 1e-5
-batch_size = 32
-epoch_num = 36
+batch_size = 196
+epoch_num = 384
 
 checkpoint = 'distilbert-base-uncased'
 tokenizer = DistilBertTokenizer.from_pretrained(checkpoint)
@@ -105,26 +105,6 @@ train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, c
 valid_dataloader = DataLoader(valid_data, batch_size=batch_size, shuffle=False, collate_fn=collote_fn)
 
 
-# def train_loop(dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
-#     progress_bar = tqdm(range(len(dataloader)))
-#     progress_bar.set_description(f'loss: {0:>7f}')
-#     finish_step_num = (epoch - 1) * len(dataloader)
-#
-#     model.train()
-#     for step, (X, y) in enumerate(dataloader, start=1):
-#         X['labels'] = y
-#         X = X.to(device)
-#         pred, loss = model(X['input_ids'], X['attention_mask'], X['labels'])
-#
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-#         lr_scheduler.step()
-#
-#         total_loss += loss.item()
-#         progress_bar.set_description(f'loss: {total_loss / (finish_step_num + step):>7f}')
-#         progress_bar.update(1)
-#     return total_loss
 def train_loop(dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))
     progress_bar.set_description(f'loss: {0:>7f}')
@@ -135,7 +115,6 @@ def train_loop(dataloader, model, optimizer, lr_scheduler, epoch, total_loss):
         X, y = X.to(device), y.to(device)
 
         loss = model(input_ids=X['input_ids'], attention_mask=X['attention_mask'], labels=y)['loss']
-        print(loss.item())
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -155,15 +134,13 @@ def flat_accuracy(preds, labels):
 
 def test_loop(dataloader, model, mode='Test'):
     assert mode in ['Valid', 'Test']
-    size = len(dataloader.dataset)
+    size = len(dataloader)
     correct = 0
-
     total_eval_accuracy = 0
     total_eval_loss = 0
-    nb_eval_steps = 0
 
     model.eval()
-    eval_loss, eval_accuracy, nb_eval_steps = 0, 0, 0
+
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
@@ -205,7 +182,7 @@ total_loss = 0.
 best_acc = 0.
 for t in range(epoch_num):
     print(f"Epoch {t + 1}/{epoch_num}\n-------------------------------")
-    # total_loss = train_loop(train_dataloader, model, optimizer, lr_scheduler, t + 1, total_loss)
+    total_loss = train_loop(train_dataloader, model, optimizer, lr_scheduler, t + 1, total_loss)
     valid_acc = test_loop(valid_dataloader, model, mode='Valid')
     if valid_acc > best_acc:
         best_acc = valid_acc
